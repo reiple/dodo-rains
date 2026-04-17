@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import pygame
+from random import Random
 
 
 SCREEN_WIDTH = 1100
@@ -29,6 +30,9 @@ TRACK_TOP = 105
 TRACK_BOTTOM = 640
 SCROLL_SPEED = 315
 LEAD_IN = 1.8
+VISUAL_TIMING_LIMIT_MS = 180
+ACTUAL_TIMING_LIMIT_MS = 120
+TIMING_STEP_MS = 5
 
 PERFECT_WINDOW = 0.05
 GREAT_WINDOW = 0.10
@@ -78,7 +82,8 @@ class RuntimeNote:
 
 
 def lane_x(index: int) -> int:
-    start_x = 350
+    total_width = len(LANES) * LANE_WIDTH + (len(LANES) - 1) * LANE_GAP
+    start_x = (SCREEN_WIDTH - total_width) // 2
     return start_x + index * (LANE_WIDTH + LANE_GAP)
 
 
@@ -251,12 +256,16 @@ def make_panel_surface(size, color, alpha=255, border=0, border_color=(255, 255,
     return surface
 
 
-def note_y(hit_time: float, song_time: float) -> float:
-    return JUDGE_LINE_Y - (hit_time - song_time) * SCROLL_SPEED
+def note_y(hit_time: float, song_time: float, judge_y: float) -> float:
+    return judge_y - (hit_time - song_time) * SCROLL_SPEED
 
 
 def clamp(value: float, lower: float, upper: float) -> float:
     return max(lower, min(upper, value))
+
+
+def ms_to_seconds(value_ms: int) -> float:
+    return value_ms / 1000.0
 
 
 def get_song_length(song: Song) -> float:
@@ -290,6 +299,23 @@ def draw_raindrop(screen, x: int, y: int, color: tuple[int, int, int], scale: fl
     pygame.draw.aaline(screen, (255, 255, 255), (x - width * 0.12, top + height * 0.28), (x - width * 0.22, top + height * 0.53))
 
 
+def draw_blurred_arrow(screen, font, text: str, x: int, y: int):
+    shadow = font.render(text, True, (255, 255, 255))
+    shadow.set_alpha(55)
+    shadow_rect = shadow.get_rect(center=(x, y + 2))
+    screen.blit(shadow, shadow_rect)
+
+    glow = font.render(text, True, (220, 232, 246))
+    glow.set_alpha(95)
+    glow_rect = glow.get_rect(center=(x, y))
+    screen.blit(glow, glow_rect)
+
+    front = font.render(text, True, (248, 250, 255))
+    front.set_alpha(180)
+    front_rect = front.get_rect(center=(x, y - 1))
+    screen.blit(front, front_rect)
+
+
 class Game:
     def __init__(self):
         pygame.init()
@@ -307,6 +333,9 @@ class Game:
         self.song_index = 0
         self.difficulty_index = 0
         self.state = "menu"
+        self.option_index = 0
+        self.visual_timing_ms = 0
+        self.actual_timing_ms = 0
 
         self.running = True
         self.notes: list[RuntimeNote] = []
@@ -322,6 +351,8 @@ class Game:
         self.max_combo = 0
         self.hold_bonus_count = 0
         self.counts = {"Perfect": 0, "Great": 0, "Good": 0, "Bad": 0, "Miss": 0}
+        self.rng = Random(7)
+        self.rain_drops = [self._spawn_rain_drop(initial=True) for _ in range(120)]
 
     @property
     def selected_song(self) -> Song:
@@ -330,6 +361,18 @@ class Game:
     @property
     def selected_difficulty(self) -> str:
         return list(self.selected_song.difficulties.keys())[self.difficulty_index]
+
+    @property
+    def visual_render_time(self) -> float:
+        return self.current_song_time + ms_to_seconds(self.visual_timing_ms)
+
+    @property
+    def actual_hit_shift_seconds(self) -> float:
+        return ms_to_seconds(self.actual_timing_ms)
+
+    @property
+    def judge_line_y(self) -> float:
+        return JUDGE_LINE_Y - self.actual_hit_shift_seconds * SCROLL_SPEED
 
     def reset_run_stats(self):
         self.notes = chart_to_runtime(self.selected_song, self.selected_difficulty)
@@ -360,6 +403,12 @@ class Game:
         self.last_judgement = label
         self.judgement_timer = 0.85
 
+    def adjust_option(self, delta_ms: int):
+        if self.option_index == 0:
+            self.visual_timing_ms = int(clamp(self.visual_timing_ms + delta_ms, -VISUAL_TIMING_LIMIT_MS, VISUAL_TIMING_LIMIT_MS))
+        else:
+            self.actual_timing_ms = int(clamp(self.actual_timing_ms + delta_ms, -ACTUAL_TIMING_LIMIT_MS, ACTUAL_TIMING_LIMIT_MS))
+
     def award_press(self, result: str):
         self.score += PRESS_SCORE[result]
         self.counts[result] += 1
@@ -376,6 +425,24 @@ class Game:
         self.max_combo = max(self.max_combo, self.combo)
         self.hold_bonus_count += 1
         self.set_judgement("Hold")
+
+    def _spawn_rain_drop(self, initial: bool = False) -> dict[str, float]:
+        return {
+            "x": self.rng.uniform(-120, SCREEN_WIDTH + 40),
+            "y": self.rng.uniform(-40, SCREEN_HEIGHT) if initial else self.rng.uniform(-220, -40),
+            "length": self.rng.uniform(16, 34),
+            "speed": self.rng.uniform(460, 760),
+            "drift": self.rng.uniform(-28, -10),
+            "alpha": self.rng.uniform(60, 140),
+        }
+
+    def update_weather(self, dt: float):
+        for drop in self.rain_drops:
+            drop["x"] += drop["drift"] * dt
+            drop["y"] += drop["speed"] * dt
+            if drop["y"] > SCREEN_HEIGHT + 40 or drop["x"] < -180:
+                replacement = self._spawn_rain_drop()
+                drop.update(replacement)
 
     def miss_note(self, note: RuntimeNote):
         if note.judged and note.hold_completed:
@@ -402,6 +469,24 @@ class Game:
                 self.difficulty_index = (self.difficulty_index + 1) % len(self.selected_song.difficulties)
             elif key in (pygame.K_RETURN, pygame.K_SPACE):
                 self.start_game()
+            elif key == pygame.K_o:
+                self.state = "options"
+            return
+
+        if self.state == "options":
+            if key == pygame.K_UP:
+                self.option_index = (self.option_index - 1) % 2
+            elif key == pygame.K_DOWN:
+                self.option_index = (self.option_index + 1) % 2
+            elif key == pygame.K_LEFT:
+                self.adjust_option(-TIMING_STEP_MS)
+            elif key == pygame.K_RIGHT:
+                self.adjust_option(TIMING_STEP_MS)
+            elif key == pygame.K_r:
+                self.visual_timing_ms = 0
+                self.actual_timing_ms = 0
+            elif key in (pygame.K_BACKSPACE, pygame.K_RETURN, pygame.K_SPACE, pygame.K_o):
+                self.state = "menu"
             return
 
         if self.state == "result":
@@ -429,8 +514,8 @@ class Game:
                 self.set_judgement("Miss")
                 return
 
-            target = min(candidates, key=lambda note: abs(note.hit_time - self.current_song_time))
-            offset = self.current_song_time - target.hit_time
+            target = min(candidates, key=lambda note: abs((note.hit_time - self.actual_hit_shift_seconds) - self.current_song_time))
+            offset = self.current_song_time - (target.hit_time - self.actual_hit_shift_seconds)
             result = grade_from_offset(offset)
 
             if result == "Miss":
@@ -460,7 +545,7 @@ class Game:
             hold = self.active_holds.get(lane_index)
             if hold is None:
                 return
-            if hold.end_time is not None and self.current_song_time < hold.end_time - GOOD_WINDOW:
+            if hold.end_time is not None and self.current_song_time < (hold.end_time - self.actual_hit_shift_seconds) - GOOD_WINDOW:
                 hold.broken = True
                 self.miss_note(hold)
             else:
@@ -483,14 +568,16 @@ class Game:
             if note.judged:
                 continue
 
-            if not note.hold_started and self.current_song_time - note.hit_time > MISS_WINDOW:
+            adjusted_hit_time = note.hit_time - self.actual_hit_shift_seconds
+            if not note.hold_started and self.current_song_time - adjusted_hit_time > MISS_WINDOW:
                 self.miss_note(note)
                 continue
 
             if note.is_hold and note.hold_started:
                 if note.broken:
                     continue
-                if note.end_time is not None and self.current_song_time >= note.end_time:
+                adjusted_end_time = note.end_time - self.actual_hit_shift_seconds if note.end_time is not None else None
+                if adjusted_end_time is not None and self.current_song_time >= adjusted_end_time:
                     note.judged = True
                     note.hold_completed = True
                     note.holding = False
@@ -505,17 +592,35 @@ class Game:
     def draw_background(self):
         for row in range(SCREEN_HEIGHT):
             blend = row / SCREEN_HEIGHT
-            red = int(24 + 36 * blend)
-            green = int(40 + 90 * blend)
-            blue = int(68 + 120 * blend)
+            red = int(12 + 28 * blend)
+            green = int(18 + 58 * blend)
+            blue = int(34 + 88 * blend)
             pygame.draw.line(self.screen, (red, green, blue), (0, row), (SCREEN_WIDTH, row))
 
+        for index in range(5):
+            cloud = pygame.Surface((420, 160), pygame.SRCALPHA)
+            color = (170, 182, 198, 44 - index * 4)
+            pygame.draw.ellipse(cloud, color, pygame.Rect(20, 55, 220, 70))
+            pygame.draw.ellipse(cloud, color, pygame.Rect(120, 30, 180, 78))
+            pygame.draw.ellipse(cloud, color, pygame.Rect(210, 58, 170, 66))
+            self.screen.blit(cloud, (-30 + index * 160, 35 + index * 18))
+
+        mist = pygame.Surface((SCREEN_WIDTH, 220), pygame.SRCALPHA)
         for index in range(6):
-            radius = 120 + index * 80
-            alpha = max(16, 105 - index * 13)
-            surface = pygame.Surface((radius * 2, radius * 2), pygame.SRCALPHA)
-            pygame.draw.circle(surface, (236, 245, 255, alpha), (radius, radius), radius)
-            self.screen.blit(surface, (-30 - index * 30, -45 - index * 20))
+            pygame.draw.ellipse(
+                mist,
+                (208, 220, 232, 10),
+                pygame.Rect(-80 + index * 180, 90 + (index % 2) * 18, 300, 70),
+            )
+        self.screen.blit(mist, (0, 430))
+
+        rain_surface = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
+        for drop in self.rain_drops:
+            color = (200, 226, 255, int(drop["alpha"]))
+            start = (int(drop["x"]), int(drop["y"]))
+            end = (int(drop["x"] + drop["drift"] * 0.12), int(drop["y"] + drop["length"]))
+            pygame.draw.line(rain_surface, color, start, end, 1)
+        self.screen.blit(rain_surface, (0, 0))
 
     def draw_menu(self):
         self.draw_background()
@@ -564,14 +669,41 @@ class Game:
         draw_text(self.screen, self.small_font, "↑ ↓ : 곡 선택", (196, 205, 228), 572, 620)
         draw_text(self.screen, self.small_font, "← → : 난이도 선택", (196, 205, 228), 572, 648)
         draw_text(self.screen, self.small_font, "Enter / Space : 시작", (196, 205, 228), 760, 620)
-        draw_text(self.screen, self.small_font, "Esc : 종료", (196, 205, 228), 760, 648)
+        draw_text(self.screen, self.small_font, "O : OPTIONS", (196, 205, 228), 760, 648)
+        draw_text(self.screen, self.small_font, "Esc : 종료", (196, 205, 228), 900, 648)
+
+    def draw_options(self):
+        self.draw_background()
+        panel = make_panel_surface((760, 420), (16, 22, 34), 215, border=2, border_color=(92, 112, 142))
+        self.screen.blit(panel, (170, 135))
+
+        draw_text(self.screen, self.title_font, "TIMING OPTIONS", (242, 246, 255), 550, 190, center=True)
+        draw_text(self.screen, self.small_font, "Use Up/Down to select and Left/Right to adjust", (200, 214, 234), 550, 232, center=True)
+
+        options = [
+            ("Visual Timing", self.visual_timing_ms, "Adjust note travel timing to match what you see"),
+            ("Actual Timing", self.actual_timing_ms, "Shift the actual hit center up or down"),
+        ]
+        for index, (label, value, description) in enumerate(options):
+            y = 315 + index * 110
+            selected = index == self.option_index
+            box = make_panel_surface((620, 78), (76, 106, 150) if selected else (36, 46, 68), 185 if selected else 145)
+            self.screen.blit(box, (240, y))
+            text_color = (18, 24, 34) if selected else (244, 247, 255)
+            sub_color = (32, 42, 58) if selected else (190, 205, 226)
+            draw_text(self.screen, self.heading_font, label, text_color, 270, y + 16)
+            draw_text(self.screen, self.small_font, f"{value:+d} ms", text_color, 770, y + 20, center=True)
+            draw_text(self.screen, self.small_font, description, sub_color, 270, y + 50)
+
+        draw_text(self.screen, self.small_font, "Positive actual timing moves the hit point upward", (210, 222, 240), 550, 516, center=True)
+        draw_text(self.screen, self.small_font, "R : reset  |  Enter / Backspace / O : return", (210, 222, 240), 550, 548, center=True)
 
     def draw_gameplay(self):
         self.draw_background()
         song = self.selected_song
         accent = song.accent_color
 
-        ground_top = JUDGE_LINE_Y + 14
+        ground_top = int(self.judge_line_y + 14)
         ground_rect = pygame.Rect(0, ground_top, SCREEN_WIDTH, SCREEN_HEIGHT - ground_top)
         pygame.draw.rect(self.screen, (82, 114, 78), ground_rect)
         pygame.draw.rect(self.screen, (66, 96, 64), pygame.Rect(0, ground_top + 28, SCREEN_WIDTH, SCREEN_HEIGHT - ground_top - 28))
@@ -587,43 +719,24 @@ class Game:
                 2,
             )
 
-        left_panel = make_panel_surface((275, 610), (18, 24, 40), 235, border=2, border_color=(55, 67, 102))
-        self.screen.blit(left_panel, (45, 55))
-        draw_text(self.screen, self.heading_font, song.title, accent, 72, 82)
-        draw_text(self.screen, self.small_font, f"{song.artist}  |  {self.selected_difficulty}", (210, 222, 245), 74, 122)
-        draw_text(self.screen, self.ui_font, f"점수  {self.score}", (245, 248, 255), 74, 180)
-        draw_text(self.screen, self.ui_font, f"콤보  {self.combo}", (245, 248, 255), 74, 218)
-        draw_text(self.screen, self.ui_font, f"최대 콤보  {self.max_combo}", (245, 248, 255), 74, 256)
-        draw_text(self.screen, self.small_font, f"Perfect  {self.counts['Perfect']}", (140, 255, 188), 74, 330)
-        draw_text(self.screen, self.small_font, f"Great    {self.counts['Great']}", (137, 208, 255), 74, 360)
-        draw_text(self.screen, self.small_font, f"Good     {self.counts['Good']}", (255, 220, 120), 74, 390)
-        draw_text(self.screen, self.small_font, f"Bad      {self.counts['Bad']}", (255, 184, 133), 74, 420)
-        draw_text(self.screen, self.small_font, f"Miss     {self.counts['Miss']}", (255, 145, 145), 74, 450)
-        draw_text(self.screen, self.small_font, f"Hold Bonus  {self.hold_bonus_count}", (216, 178, 255), 74, 480)
-
-        time_value = max(0.0, self.current_song_time)
-        draw_text(self.screen, self.small_font, f"재생 시간  {time_value:05.2f}s", (204, 214, 236), 74, 515)
-        draw_text(self.screen, self.small_font, f"BPM  {int(song.bpm)}", (204, 214, 236), 74, 545)
-        draw_text(self.screen, self.small_font, "Esc : 메뉴로 돌아가기", (190, 204, 228), 74, 620)
+        top_strip = make_panel_surface((530, 70), (12, 18, 30), 140, border=1, border_color=(106, 128, 155))
+        self.screen.blit(top_strip, (286, 24))
+        draw_text(self.screen, self.heading_font, song.title, (242, 246, 255), 316, 38)
+        draw_text(self.screen, self.small_font, f"{song.artist}  |  {self.selected_difficulty}  |  BPM {int(song.bpm)}", (192, 208, 228), 318, 68)
+        draw_text(self.screen, self.small_font, "ESC : MENU", (220, 230, 242), 928, 28)
 
         for lane_index, lane in enumerate(LANES):
             x = lane_x(lane_index)
-            lane_rect = pygame.Rect(x, TRACK_TOP, LANE_WIDTH, TRACK_BOTTOM - TRACK_TOP)
-            pygame.draw.rect(self.screen, (28, 35, 54), lane_rect, border_radius=16)
-            pygame.draw.rect(self.screen, (58, 68, 96), lane_rect, width=2, border_radius=16)
-
-            bottom_box = pygame.Rect(x + 10, JUDGE_LINE_Y - 12, LANE_WIDTH - 20, 54)
-            press_glow = 1.0 if lane_index in self.active_holds else 0.0
-            fill_color = tuple(
-                int(clamp(channel * (0.80 + press_glow * 0.25), 0, 255))
-                for channel in lane["color"]
-            )
-            pygame.draw.rect(self.screen, fill_color, bottom_box, border_radius=14)
-            draw_text(self.screen, self.title_font, lane["display"], (18, 22, 30), bottom_box.centerx, bottom_box.centery - 2, center=True)
+            arrow_y = ground_top + 30
+            if lane_index in self.active_holds:
+                active_glow = pygame.Surface((84, 84), pygame.SRCALPHA)
+                pygame.draw.circle(active_glow, (*lane["color"], 38), (42, 42), 42)
+                self.screen.blit(active_glow, (x + LANE_WIDTH // 2 - 42, arrow_y - 38))
+            draw_blurred_arrow(self.screen, self.title_font, lane["display"], x + LANE_WIDTH // 2, arrow_y)
 
         pulse = 0.75 + 0.25 * math.sin(pygame.time.get_ticks() / 140.0)
         judge_color = tuple(int(clamp(channel * pulse, 0, 255)) for channel in accent)
-        pygame.draw.line(self.screen, judge_color, (lane_x(0), ground_top), (lane_x(len(LANES) - 1) + LANE_WIDTH, ground_top), 5)
+        pygame.draw.line(self.screen, judge_color, (lane_x(0) - 10, ground_top), (lane_x(len(LANES) - 1) + LANE_WIDTH + 10, ground_top), 5)
 
         for note in self.notes:
             if note.judged and not (note.is_hold and note.hold_started and not note.hold_completed):
@@ -631,10 +744,10 @@ class Game:
 
             x = lane_x(note.lane) + (LANE_WIDTH - NOTE_WIDTH) // 2
             color = LANES[note.lane]["color"]
-            head_y = note_y(note.hit_time, self.current_song_time)
+            head_y = note_y(note.hit_time, self.visual_render_time, self.judge_line_y)
 
             if note.is_hold and note.end_time is not None:
-                tail_y = note_y(note.end_time, self.current_song_time)
+                tail_y = note_y(note.end_time, self.visual_render_time, self.judge_line_y)
                 top = min(head_y, tail_y)
                 bottom = max(head_y, tail_y)
                 visible_top = max(TRACK_TOP, int(top))
@@ -664,7 +777,15 @@ class Game:
                 "Hold": (218, 179, 255),
                 "READY": (245, 248, 255),
             }
-            draw_text(self.screen, self.title_font, self.last_judgement.upper(), colors.get(self.last_judgement, (255, 255, 255)), 905, 122, center=True)
+            draw_text(
+                self.screen,
+                self.title_font,
+                self.last_judgement.upper(),
+                colors.get(self.last_judgement, (255, 255, 255)),
+                SCREEN_WIDTH // 2,
+                ground_top + 44,
+                center=True,
+            )
 
         if self.current_song_time < 0:
             remaining = math.ceil(abs(self.current_song_time))
@@ -704,6 +825,7 @@ class Game:
         draw_text(self.screen, self.small_font, "Enter / Space / Backspace : 곡 선택으로", (202, 212, 235), 550, 668, center=True)
 
     def update(self, dt: float):
+        self.update_weather(dt)
         if self.state == "playing":
             self.update_play_state()
         self.judgement_timer = max(0.0, self.judgement_timer - dt)
@@ -711,6 +833,8 @@ class Game:
     def draw(self):
         if self.state == "menu":
             self.draw_menu()
+        elif self.state == "options":
+            self.draw_options()
         elif self.state == "playing":
             self.draw_gameplay()
         elif self.state == "result":
@@ -728,6 +852,8 @@ class Game:
                     if event.key == pygame.K_ESCAPE:
                         if self.state == "playing":
                             self.return_to_menu()
+                        elif self.state == "options":
+                            self.state = "menu"
                         else:
                             self.running = False
                     else:
