@@ -30,6 +30,7 @@ TRACK_TOP = 105
 TRACK_BOTTOM = 640
 SCROLL_SPEED = 315
 LEAD_IN = 1.8
+APPROACH_TIME = 1.55
 VISUAL_TIMING_LIMIT_MS = 180
 ACTUAL_TIMING_LIMIT_MS = 120
 TIMING_STEP_MS = 5
@@ -257,7 +258,12 @@ def make_panel_surface(size, color, alpha=255, border=0, border_color=(255, 255,
 
 
 def note_y(hit_time: float, song_time: float, judge_y: float) -> float:
-    return judge_y - (hit_time - song_time) * SCROLL_SPEED
+    remaining = hit_time - song_time
+    fall_distance = judge_y - TRACK_TOP
+    acceleration = (2 * fall_distance) / (APPROACH_TIME**2)
+    if remaining >= 0:
+        return judge_y - 0.5 * acceleration * (remaining**2)
+    return judge_y + (-remaining) * (SCROLL_SPEED * 1.2)
 
 
 def clamp(value: float, lower: float, upper: float) -> float:
@@ -353,6 +359,7 @@ class Game:
         self.counts = {"Perfect": 0, "Great": 0, "Good": 0, "Bad": 0, "Miss": 0}
         self.rng = Random(7)
         self.rain_drops = [self._spawn_rain_drop(initial=True) for _ in range(120)]
+        self.clouds = [self._spawn_cloud(index) for index in range(12)]
 
     @property
     def selected_song(self) -> Song:
@@ -434,6 +441,19 @@ class Game:
             "speed": self.rng.uniform(460, 760),
             "drift": self.rng.uniform(-28, -10),
             "alpha": self.rng.uniform(60, 140),
+        }
+
+    def _spawn_cloud(self, index: int) -> dict[str, float]:
+        layer = index % 3
+        width = self.rng.uniform(170, 320)
+        height = self.rng.uniform(56, 108)
+        return {
+            "x": self.rng.uniform(-40, SCREEN_WIDTH - width + 40),
+            "y": self.rng.uniform(30, 250) + layer * 18,
+            "width": width,
+            "height": height,
+            "alpha": 24 + layer * 10 + self.rng.uniform(0, 12),
+            "puffs": 3 + (index % 3),
         }
 
     def update_weather(self, dt: float):
@@ -597,13 +617,20 @@ class Game:
             blue = int(34 + 88 * blend)
             pygame.draw.line(self.screen, (red, green, blue), (0, row), (SCREEN_WIDTH, row))
 
-        for index in range(5):
-            cloud = pygame.Surface((420, 160), pygame.SRCALPHA)
-            color = (170, 182, 198, 44 - index * 4)
-            pygame.draw.ellipse(cloud, color, pygame.Rect(20, 55, 220, 70))
-            pygame.draw.ellipse(cloud, color, pygame.Rect(120, 30, 180, 78))
-            pygame.draw.ellipse(cloud, color, pygame.Rect(210, 58, 170, 66))
-            self.screen.blit(cloud, (-30 + index * 160, 35 + index * 18))
+        for cloud in self.clouds:
+            cloud_surface = pygame.Surface((int(cloud["width"]) + 36, int(cloud["height"]) + 36), pygame.SRCALPHA)
+            puff_count = int(cloud["puffs"])
+            for puff_index in range(puff_count):
+                puff_w = cloud["width"] * (0.36 + puff_index * 0.11)
+                puff_h = cloud["height"] * (0.58 + (puff_index % 2) * 0.08)
+                puff_x = 10 + puff_index * (cloud["width"] * 0.14)
+                puff_y = 12 + (puff_index % 2) * 8 + max(0, 18 - puff_index * 4)
+                pygame.draw.ellipse(
+                    cloud_surface,
+                    (162, 175, 194, int(cloud["alpha"])),
+                    pygame.Rect(int(puff_x), int(puff_y), int(puff_w), int(puff_h)),
+                )
+            self.screen.blit(cloud_surface, (int(cloud["x"]), int(cloud["y"])))
 
         mist = pygame.Surface((SCREEN_WIDTH, 220), pygame.SRCALPHA)
         for index in range(6):
@@ -708,16 +735,6 @@ class Game:
         pygame.draw.rect(self.screen, (82, 114, 78), ground_rect)
         pygame.draw.rect(self.screen, (66, 96, 64), pygame.Rect(0, ground_top + 28, SCREEN_WIDTH, SCREEN_HEIGHT - ground_top - 28))
         pygame.draw.line(self.screen, (230, 247, 255), (0, ground_top), (SCREEN_WIDTH, ground_top), 4)
-        for ripple_index in range(4):
-            ripple_y = ground_top + 26 + ripple_index * 22
-            pygame.draw.arc(
-                self.screen,
-                (182, 228, 245),
-                pygame.Rect(720 - ripple_index * 35, ripple_y, 260 + ripple_index * 60, 30),
-                math.pi,
-                math.tau,
-                2,
-            )
 
         top_strip = make_panel_surface((530, 70), (12, 18, 30), 140, border=1, border_color=(106, 128, 155))
         self.screen.blit(top_strip, (286, 24))
