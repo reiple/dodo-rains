@@ -1,0 +1,12 @@
+[project]
+name = "rhythm-trainer"
+version = "0.1.0"
+description = "pygame based rhythm game with arrow-key timing judgement"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "pygame>=2.5,<3",
+]
+
+[tool.uv]
+package = false
