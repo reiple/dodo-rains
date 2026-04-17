@@ -45,6 +45,8 @@ PRESS_SCORE = {"Perfect": 300, "Great": 220, "Good": 120, "Bad": 40, "Miss": 0}
 HOLD_BONUS = 180
 
 BASE_DIR = Path(__file__).resolve().parent
+METRONOME_BPM = 100
+CALIBRATION_ATTEMPTS = 7
 
 
 @dataclass(frozen=True)
@@ -360,6 +362,12 @@ class Game:
         self.rng = Random(7)
         self.rain_drops = [self._spawn_rain_drop(initial=True) for _ in range(120)]
         self.clouds = [self._spawn_cloud(index) for index in range(12)]
+        self.metronome_sound = pygame.mixer.Sound(str(BASE_DIR / "assets" / "metronome_click.wav"))
+        self.metronome_sound.set_volume(0.45)
+        self.calibration_start_tick = 0.0
+        self.last_metronome_beat = -1
+        self.calibration_offsets_ms: list[int] = []
+        self.calibration_result_text = ""
 
     @property
     def selected_song(self) -> Song:
@@ -380,6 +388,10 @@ class Game:
     @property
     def judge_line_y(self) -> float:
         return JUDGE_LINE_Y - self.actual_hit_shift_seconds * SCROLL_SPEED
+
+    @property
+    def calibration_song_time(self) -> float:
+        return (pygame.time.get_ticks() / 1000.0) - self.calibration_start_tick
 
     def reset_run_stats(self):
         self.notes = chart_to_runtime(self.selected_song, self.selected_difficulty)
@@ -411,10 +423,19 @@ class Game:
         self.judgement_timer = 0.85
 
     def adjust_option(self, delta_ms: int):
-        if self.option_index == 0:
-            self.visual_timing_ms = int(clamp(self.visual_timing_ms + delta_ms, -VISUAL_TIMING_LIMIT_MS, VISUAL_TIMING_LIMIT_MS))
-        else:
-            self.actual_timing_ms = int(clamp(self.actual_timing_ms + delta_ms, -ACTUAL_TIMING_LIMIT_MS, ACTUAL_TIMING_LIMIT_MS))
+        self.visual_timing_ms = int(clamp(self.visual_timing_ms + delta_ms, -VISUAL_TIMING_LIMIT_MS, VISUAL_TIMING_LIMIT_MS))
+
+    def start_visual_calibration(self):
+        self.state = "visual_calibration"
+        self.calibration_start_tick = pygame.time.get_ticks() / 1000.0
+        self.last_metronome_beat = -1
+
+    def start_judgement_calibration(self):
+        self.state = "judgement_calibration"
+        self.calibration_start_tick = pygame.time.get_ticks() / 1000.0
+        self.last_metronome_beat = -1
+        self.calibration_offsets_ms = []
+        self.calibration_result_text = ""
 
     def award_press(self, result: str):
         self.score += PRESS_SCORE[result]
@@ -495,18 +516,39 @@ class Game:
 
         if self.state == "options":
             if key == pygame.K_UP:
-                self.option_index = (self.option_index - 1) % 2
+                self.option_index = (self.option_index - 1) % 3
             elif key == pygame.K_DOWN:
-                self.option_index = (self.option_index + 1) % 2
-            elif key == pygame.K_LEFT:
+                self.option_index = (self.option_index + 1) % 3
+            elif key == pygame.K_r:
+                self.visual_timing_ms = 0
+                self.actual_timing_ms = 0
+            elif key in (pygame.K_RETURN, pygame.K_SPACE):
+                if self.option_index == 0:
+                    self.start_visual_calibration()
+                elif self.option_index == 1:
+                    self.start_judgement_calibration()
+                else:
+                    self.state = "menu"
+            elif key in (pygame.K_BACKSPACE, pygame.K_o):
+                self.state = "menu"
+            return
+
+        if self.state == "visual_calibration":
+            if key == pygame.K_LEFT:
                 self.adjust_option(-TIMING_STEP_MS)
             elif key == pygame.K_RIGHT:
                 self.adjust_option(TIMING_STEP_MS)
             elif key == pygame.K_r:
                 self.visual_timing_ms = 0
-                self.actual_timing_ms = 0
-            elif key in (pygame.K_BACKSPACE, pygame.K_RETURN, pygame.K_SPACE, pygame.K_o):
-                self.state = "menu"
+            elif key in (pygame.K_RETURN, pygame.K_SPACE, pygame.K_BACKSPACE, pygame.K_o):
+                self.state = "options"
+            return
+
+        if self.state == "judgement_calibration":
+            if key == pygame.K_SPACE:
+                self.record_judgement_calibration_press()
+            elif key in (pygame.K_BACKSPACE, pygame.K_o):
+                self.state = "options"
             return
 
         if self.state == "result":
@@ -534,8 +576,8 @@ class Game:
                 self.set_judgement("Miss")
                 return
 
-            target = min(candidates, key=lambda note: abs((note.hit_time - self.actual_hit_shift_seconds) - self.current_song_time))
-            offset = self.current_song_time - (target.hit_time - self.actual_hit_shift_seconds)
+            target = min(candidates, key=lambda note: abs((note.hit_time + self.actual_hit_shift_seconds) - self.current_song_time))
+            offset = self.current_song_time - (target.hit_time + self.actual_hit_shift_seconds)
             result = grade_from_offset(offset)
 
             if result == "Miss":
@@ -565,7 +607,7 @@ class Game:
             hold = self.active_holds.get(lane_index)
             if hold is None:
                 return
-            if hold.end_time is not None and self.current_song_time < (hold.end_time - self.actual_hit_shift_seconds) - GOOD_WINDOW:
+            if hold.end_time is not None and self.current_song_time < (hold.end_time + self.actual_hit_shift_seconds) - GOOD_WINDOW:
                 hold.broken = True
                 self.miss_note(hold)
             else:
@@ -581,6 +623,28 @@ class Game:
                 pygame.mixer.music.play()
             self.music_started = True
 
+    def update_metronome(self):
+        beat_length = 60.0 / METRONOME_BPM
+        beat_index = int(self.calibration_song_time / beat_length)
+        if beat_index != self.last_metronome_beat and beat_index >= 0:
+            self.last_metronome_beat = beat_index
+            self.metronome_sound.play()
+
+    def record_judgement_calibration_press(self):
+        beat_length = 60.0 / METRONOME_BPM
+        target_index = len(self.calibration_offsets_ms) + 2
+        target_time = target_index * beat_length
+        offset_ms = int(round((self.calibration_song_time - target_time) * 1000))
+        self.calibration_offsets_ms.append(offset_ms)
+
+        if len(self.calibration_offsets_ms) >= CALIBRATION_ATTEMPTS:
+            average_ms = int(round(sum(self.calibration_offsets_ms) / len(self.calibration_offsets_ms)))
+            self.actual_timing_ms = int(clamp(average_ms, -ACTUAL_TIMING_LIMIT_MS, ACTUAL_TIMING_LIMIT_MS))
+            self.calibration_result_text = (
+                f"당신의 시각 보정은 {self.visual_timing_ms:+d} ms이고, 실제 판정은 {self.actual_timing_ms:+d} ms입니다."
+            )
+            self.state = "options"
+
     def update_play_state(self):
         self.update_song_time()
 
@@ -588,7 +652,7 @@ class Game:
             if note.judged:
                 continue
 
-            adjusted_hit_time = note.hit_time - self.actual_hit_shift_seconds
+            adjusted_hit_time = note.hit_time + self.actual_hit_shift_seconds
             if not note.hold_started and self.current_song_time - adjusted_hit_time > MISS_WINDOW:
                 self.miss_note(note)
                 continue
@@ -596,7 +660,7 @@ class Game:
             if note.is_hold and note.hold_started:
                 if note.broken:
                     continue
-                adjusted_end_time = note.end_time - self.actual_hit_shift_seconds if note.end_time is not None else None
+                adjusted_end_time = note.end_time + self.actual_hit_shift_seconds if note.end_time is not None else None
                 if adjusted_end_time is not None and self.current_song_time >= adjusted_end_time:
                     note.judged = True
                     note.hold_completed = True
@@ -704,26 +768,77 @@ class Game:
         panel = make_panel_surface((760, 420), (16, 22, 34), 215, border=2, border_color=(92, 112, 142))
         self.screen.blit(panel, (170, 135))
 
-        draw_text(self.screen, self.title_font, "TIMING OPTIONS", (242, 246, 255), 550, 190, center=True)
-        draw_text(self.screen, self.small_font, "Use Up/Down to select and Left/Right to adjust", (200, 214, 234), 550, 232, center=True)
+        draw_text(self.screen, self.title_font, "CALIBRATION", (242, 246, 255), 550, 190, center=True)
+        draw_text(self.screen, self.small_font, "Choose a calibration mode", (200, 214, 234), 550, 232, center=True)
 
         options = [
-            ("Visual Timing", self.visual_timing_ms, "Adjust note travel timing to match what you see"),
-            ("Actual Timing", self.actual_timing_ms, "Shift the actual hit center up or down"),
+            ("시각 보정", f"{self.visual_timing_ms:+d} ms", "메트로놈 소리와 발광 박스를 맞춥니다"),
+            ("판정 보정", f"{self.actual_timing_ms:+d} ms", "7번 테스트해 실제 판정을 측정합니다"),
+            ("돌아가기", "", "메뉴로 돌아갑니다"),
         ]
         for index, (label, value, description) in enumerate(options):
-            y = 315 + index * 110
+            y = 300 + index * 90
             selected = index == self.option_index
             box = make_panel_surface((620, 78), (76, 106, 150) if selected else (36, 46, 68), 185 if selected else 145)
             self.screen.blit(box, (240, y))
             text_color = (18, 24, 34) if selected else (244, 247, 255)
             sub_color = (32, 42, 58) if selected else (190, 205, 226)
             draw_text(self.screen, self.heading_font, label, text_color, 270, y + 16)
-            draw_text(self.screen, self.small_font, f"{value:+d} ms", text_color, 770, y + 20, center=True)
+            if value:
+                draw_text(self.screen, self.small_font, value, text_color, 770, y + 20, center=True)
             draw_text(self.screen, self.small_font, description, sub_color, 270, y + 50)
 
-        draw_text(self.screen, self.small_font, "Positive actual timing moves the hit point upward", (210, 222, 240), 550, 516, center=True)
-        draw_text(self.screen, self.small_font, "R : reset  |  Enter / Backspace / O : return", (210, 222, 240), 550, 548, center=True)
+        if self.calibration_result_text:
+            draw_text(self.screen, self.small_font, self.calibration_result_text, (222, 232, 246), 550, 584, center=True)
+        draw_text(self.screen, self.small_font, "Enter : 실행  |  R : 값 초기화  |  Backspace : 돌아가기", (210, 222, 240), 550, 614, center=True)
+
+    def draw_visual_calibration(self):
+        self.draw_background()
+        panel = make_panel_surface((760, 500), (16, 22, 34), 220, border=2, border_color=(92, 112, 142))
+        self.screen.blit(panel, (170, 110))
+
+        beat_length = 60.0 / METRONOME_BPM
+        flash_phase = ((self.calibration_song_time + ms_to_seconds(self.visual_timing_ms)) % beat_length) / beat_length
+        glow_strength = max(0.0, 1.0 - min(flash_phase, 1.0 - flash_phase) * 5.0)
+        brightness = int(110 + glow_strength * 145)
+
+        draw_text(self.screen, self.title_font, "VISUAL CALIBRATION", (244, 247, 255), 550, 170, center=True)
+        draw_text(self.screen, self.small_font, "메트로놈 소리와 네모 발광 타이밍이 같아지도록 화살표키로 조절하세요", (210, 222, 240), 550, 214, center=True)
+
+        flash_surface = pygame.Surface((170, 170), pygame.SRCALPHA)
+        pygame.draw.rect(flash_surface, (brightness, brightness, brightness, 240), flash_surface.get_rect(), border_radius=28)
+        pygame.draw.rect(flash_surface, (255, 255, 255, 255), flash_surface.get_rect(), width=2, border_radius=28)
+        self.screen.blit(flash_surface, (465, 280))
+
+        draw_text(self.screen, self.heading_font, f"시각 보정  {self.visual_timing_ms:+d} ms", (244, 247, 255), 550, 500, center=True)
+        draw_text(self.screen, self.small_font, "Left / Right : 조절   R : 초기화   Enter : 저장 후 돌아가기", (210, 222, 240), 550, 552, center=True)
+
+    def draw_judgement_calibration(self):
+        self.draw_background()
+        panel = make_panel_surface((760, 520), (16, 22, 34), 220, border=2, border_color=(92, 112, 142))
+        self.screen.blit(panel, (170, 100))
+
+        beat_length = 60.0 / METRONOME_BPM
+        attempt_index = min(len(self.calibration_offsets_ms), CALIBRATION_ATTEMPTS - 1)
+        target_time = (attempt_index + 2) * beat_length
+        judge_y = self.judge_line_y
+        ground_top = int(judge_y + 14)
+
+        draw_text(self.screen, self.title_font, "JUDGEMENT CALIBRATION", (244, 247, 255), 550, 154, center=True)
+        draw_text(self.screen, self.small_font, "물방울이 판정선에 닿는 순간 Space를 눌러주세요", (210, 222, 240), 550, 198, center=True)
+        draw_text(self.screen, self.heading_font, f"{len(self.calibration_offsets_ms)} / {CALIBRATION_ATTEMPTS}", (244, 247, 255), 550, 238, center=True)
+
+        pygame.draw.line(self.screen, (236, 245, 255), (330, ground_top), (770, ground_top), 4)
+        pygame.draw.rect(self.screen, (70, 102, 72), pygame.Rect(330, ground_top, 440, 130))
+
+        drop_y = note_y(target_time, self.calibration_song_time + ms_to_seconds(self.visual_timing_ms), judge_y)
+        if TRACK_TOP - 40 <= drop_y <= TRACK_BOTTOM + 50:
+            draw_raindrop(self.screen, 550, int(drop_y) + NOTE_HEIGHT // 2, (120, 194, 255), 1.1)
+
+        if self.calibration_offsets_ms:
+            latest = self.calibration_offsets_ms[-1]
+            draw_text(self.screen, self.small_font, f"최근 입력: {latest:+d} ms", (228, 236, 248), 550, 536, center=True)
+        draw_text(self.screen, self.small_font, "Space : 입력   Backspace : 취소", (210, 222, 240), 550, 570, center=True)
 
     def draw_gameplay(self):
         self.draw_background()
@@ -845,6 +960,8 @@ class Game:
         self.update_weather(dt)
         if self.state == "playing":
             self.update_play_state()
+        elif self.state in ("visual_calibration", "judgement_calibration"):
+            self.update_metronome()
         self.judgement_timer = max(0.0, self.judgement_timer - dt)
 
     def draw(self):
@@ -852,6 +969,10 @@ class Game:
             self.draw_menu()
         elif self.state == "options":
             self.draw_options()
+        elif self.state == "visual_calibration":
+            self.draw_visual_calibration()
+        elif self.state == "judgement_calibration":
+            self.draw_judgement_calibration()
         elif self.state == "playing":
             self.draw_gameplay()
         elif self.state == "result":
@@ -869,7 +990,7 @@ class Game:
                     if event.key == pygame.K_ESCAPE:
                         if self.state == "playing":
                             self.return_to_menu()
-                        elif self.state == "options":
+                        elif self.state in ("options", "visual_calibration", "judgement_calibration"):
                             self.state = "menu"
                         else:
                             self.running = False
