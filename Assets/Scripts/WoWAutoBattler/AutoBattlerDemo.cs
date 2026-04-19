@@ -13,9 +13,9 @@ namespace WoWAutoBattler
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
         private static void EnsureBootstrapExists()
         {
-            if (FindFirstObjectByType<AutoBattlerDemo>() != null) return;
+            if (FindAnyObjectByType<AutoBattler2DDemo>() != null) return;
             var bootstrap = new GameObject("DemoBootstrap");
-            bootstrap.AddComponent<AutoBattlerDemo>();
+            bootstrap.AddComponent<AutoBattler2DDemo>();
         }
 
         private enum Phase { Prep, Battle, Results }

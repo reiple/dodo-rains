@@ -88,18 +88,18 @@ namespace WoWAutoBattler
         {
             return new List<TraitDefinition>
             {
-                new TraitDefinition("alliance", "Alliance", new[] { 2, 4 }, "Start-of-combat team shield"),
-                new TraitDefinition("horde", "Horde", new[] { 2, 4 }, "Bonus attack damage"),
-                new TraitDefinition("scourge", "Scourge", new[] { 2, 4 }, "Lifesteal"),
-                new TraitDefinition("cenarion", "Cenarion", new[] { 2, 4 }, "Health regeneration"),
-                new TraitDefinition("titanforged", "Titanforged", new[] { 2, 4 }, "Bonus max health"),
-                new TraitDefinition("warrior", "Warrior", new[] { 2, 4 }, "Flat damage reduction"),
-                new TraitDefinition("mage", "Mage", new[] { 2, 4 }, "Ability power and starting mana"),
-                new TraitDefinition("shaman", "Shaman", new[] { 2, 4 }, "Mana on attack"),
-                new TraitDefinition("rogue", "Rogue", new[] { 2, 4 }, "Critical strike chance"),
-                new TraitDefinition("paladin", "Paladin", new[] { 2, 4 }, "Personal shield"),
-                new TraitDefinition("hunter", "Hunter", new[] { 2, 4 }, "Attack range"),
-                new TraitDefinition("druid", "Druid", new[] { 2, 4 }, "Cast sustain"),
+                new TraitDefinition("alliance", "얼라이언스", new[] { 2, 4 }, "전투 시작 시 팀 보호막"),
+                new TraitDefinition("horde", "호드", new[] { 2, 4 }, "공격력 증가"),
+                new TraitDefinition("scourge", "스컬지", new[] { 2, 4 }, "흡혈 획득"),
+                new TraitDefinition("cenarion", "세나리온", new[] { 2, 4 }, "체력 재생"),
+                new TraitDefinition("titanforged", "티탄벼림", new[] { 2, 4 }, "최대 체력 증가"),
+                new TraitDefinition("warrior", "전사", new[] { 2, 4 }, "고정 피해 감소"),
+                new TraitDefinition("mage", "마법사", new[] { 2, 4 }, "주문력과 시작 마나 증가"),
+                new TraitDefinition("shaman", "주술사", new[] { 2, 4 }, "공격 시 마나 증가"),
+                new TraitDefinition("rogue", "도적", new[] { 2, 4 }, "치명타 확률 증가"),
+                new TraitDefinition("paladin", "성기사", new[] { 2, 4 }, "개인 보호막"),
+                new TraitDefinition("hunter", "사냥꾼", new[] { 2, 4 }, "공격 사거리 증가"),
+                new TraitDefinition("druid", "드루이드", new[] { 2, 4 }, "시전 유지력"),
             };
         }
 
@@ -107,19 +107,19 @@ namespace WoWAutoBattler
         {
             return new List<UnitDefinition>
             {
-                new UnitDefinition("stormblade_commander", "Stormblade Commander", 1, 165f, 22f, 0.85f, 1.35f, 2.8f, 100f, 24f, AbilityType.ShieldSlam, new Color(0.29f, 0.52f, 0.92f), "alliance", "warrior"),
-                new UnitDefinition("frost_archmage", "Frost Archmage", 2, 120f, 18f, 0.78f, 3.6f, 2.4f, 80f, 38f, AbilityType.FrostNova, new Color(0.40f, 0.86f, 1f), "alliance", "mage"),
-                new UnitDefinition("gryphon_ranger", "Gryphon Ranger", 2, 128f, 24f, 0.95f, 4.2f, 2.5f, 90f, 22f, AbilityType.None, new Color(0.70f, 0.83f, 0.95f), "alliance", "hunter"),
-                new UnitDefinition("warsong_blademaster", "Warsong Blademaster", 1, 160f, 25f, 0.92f, 1.4f, 2.95f, 100f, 26f, AbilityType.Whirlwind, new Color(0.77f, 0.23f, 0.23f), "horde", "warrior"),
-                new UnitDefinition("spirit_caller", "Spirit Caller", 2, 132f, 20f, 0.8f, 3.5f, 2.45f, 75f, 34f, AbilityType.ChainLightning, new Color(0.16f, 0.70f, 0.56f), "horde", "shaman"),
-                new UnitDefinition("shadow_hunter", "Shadow Hunter", 3, 118f, 30f, 1.05f, 1.5f, 3.25f, 70f, 36f, AbilityType.ShadowStrike, new Color(0.44f, 0.27f, 0.15f), "horde", "rogue"),
-                new UnitDefinition("deathbound_lich", "Deathbound Lich", 3, 130f, 20f, 0.8f, 3.8f, 2.3f, 70f, 45f, AbilityType.ArcaneBurst, new Color(0.56f, 0.90f, 0.92f), "scourge", "mage"),
-                new UnitDefinition("boneguard", "Boneguard", 1, 175f, 21f, 0.82f, 1.3f, 2.6f, 100f, 20f, AbilityType.None, new Color(0.82f, 0.82f, 0.76f), "scourge", "warrior"),
-                new UnitDefinition("crypt_stalker", "Crypt Stalker", 2, 122f, 28f, 1.02f, 1.45f, 3.2f, 75f, 32f, AbilityType.ShadowStrike, new Color(0.40f, 0.78f, 0.45f), "scourge", "rogue"),
-                new UnitDefinition("emerald_sage", "Emerald Sage", 2, 135f, 17f, 0.82f, 3.7f, 2.35f, 75f, 34f, AbilityType.HolyLight, new Color(0.28f, 0.82f, 0.33f), "cenarion", "druid"),
-                new UnitDefinition("moonclaw_sentinel", "Moonclaw Sentinel", 3, 142f, 26f, 0.92f, 4.0f, 2.7f, 85f, 28f, AbilityType.Starfall, new Color(0.49f, 0.76f, 0.60f), "cenarion", "hunter"),
-                new UnitDefinition("rune_warden", "Rune Warden", 3, 188f, 23f, 0.84f, 1.4f, 2.7f, 90f, 30f, AbilityType.HolyLight, new Color(0.89f, 0.76f, 0.36f), "titanforged", "paladin"),
-                new UnitDefinition("forge_speaker", "Forge Speaker", 4, 150f, 22f, 0.85f, 3.9f, 2.4f, 65f, 48f, AbilityType.ChainLightning, new Color(0.94f, 0.62f, 0.20f), "titanforged", "shaman"),
+                new UnitDefinition("stormblade_commander", "폭풍칼날 지휘관", 1, 165f, 22f, 0.85f, 1.35f, 2.8f, 100f, 24f, AbilityType.ShieldSlam, new Color(0.29f, 0.52f, 0.92f), "alliance", "warrior"),
+                new UnitDefinition("frost_archmage", "서리 대마도사", 2, 120f, 18f, 0.78f, 3.6f, 2.4f, 80f, 38f, AbilityType.FrostNova, new Color(0.40f, 0.86f, 1f), "alliance", "mage"),
+                new UnitDefinition("gryphon_ranger", "그리핀 순찰자", 2, 128f, 24f, 0.95f, 4.2f, 2.5f, 90f, 22f, AbilityType.None, new Color(0.70f, 0.83f, 0.95f), "alliance", "hunter"),
+                new UnitDefinition("warsong_blademaster", "전쟁노래 검투사", 1, 160f, 25f, 0.92f, 1.4f, 2.95f, 100f, 26f, AbilityType.Whirlwind, new Color(0.77f, 0.23f, 0.23f), "horde", "warrior"),
+                new UnitDefinition("spirit_caller", "영혼예언자", 2, 132f, 20f, 0.8f, 3.5f, 2.45f, 75f, 34f, AbilityType.ChainLightning, new Color(0.16f, 0.70f, 0.56f), "horde", "shaman"),
+                new UnitDefinition("shadow_hunter", "그림자 추적자", 3, 118f, 30f, 1.05f, 1.5f, 3.25f, 70f, 36f, AbilityType.ShadowStrike, new Color(0.44f, 0.27f, 0.15f), "horde", "rogue"),
+                new UnitDefinition("deathbound_lich", "속박된 리치", 3, 130f, 20f, 0.8f, 3.8f, 2.3f, 70f, 45f, AbilityType.ArcaneBurst, new Color(0.56f, 0.90f, 0.92f), "scourge", "mage"),
+                new UnitDefinition("boneguard", "해골 수호병", 1, 175f, 21f, 0.82f, 1.3f, 2.6f, 100f, 20f, AbilityType.None, new Color(0.82f, 0.82f, 0.76f), "scourge", "warrior"),
+                new UnitDefinition("crypt_stalker", "묘혈 암살자", 2, 122f, 28f, 1.02f, 1.45f, 3.2f, 75f, 32f, AbilityType.ShadowStrike, new Color(0.40f, 0.78f, 0.45f), "scourge", "rogue"),
+                new UnitDefinition("emerald_sage", "에메랄드 현자", 2, 135f, 17f, 0.82f, 3.7f, 2.35f, 75f, 34f, AbilityType.HolyLight, new Color(0.28f, 0.82f, 0.33f), "cenarion", "druid"),
+                new UnitDefinition("moonclaw_sentinel", "달발톱 파수병", 3, 142f, 26f, 0.92f, 4.0f, 2.7f, 85f, 28f, AbilityType.Starfall, new Color(0.49f, 0.76f, 0.60f), "cenarion", "hunter"),
+                new UnitDefinition("rune_warden", "룬 수호 성전사", 3, 188f, 23f, 0.84f, 1.4f, 2.7f, 90f, 30f, AbilityType.HolyLight, new Color(0.89f, 0.76f, 0.36f), "titanforged", "paladin"),
+                new UnitDefinition("forge_speaker", "벼림의 예언자", 4, 150f, 22f, 0.85f, 3.9f, 2.4f, 65f, 48f, AbilityType.ChainLightning, new Color(0.94f, 0.62f, 0.20f), "titanforged", "shaman"),
             };
         }
 
