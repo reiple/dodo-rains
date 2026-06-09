@@ -1,20 +1,20 @@
 # RAIN DROPS
 
-`pygame`로 만든 빗방울 테마 리듬게임입니다.
-실제 음악 파일 재생, BPM 기반 차트 동기화, 물방울 노트, 홀드 노트, 난이도 선택, 시작 화면과 곡 선택 UI까지 포함되어 있습니다.
+`pygame`로 만든 빗방울 테마 리듬게임입니다. 실제 음악 파일 재생, BPM 기반 차트 동기화, 물방울 노트, 홀드 노트, 난이도 선택, 보정 옵션 화면을 포함합니다.
 
-## 포함된 기능
+![RAIN DROPS gameplay screenshot](assets/readme-gameplay.png)
+
+## 주요 기능
 
 - 실제 `wav` 음악 파일 2곡 재생
-- BPM 기준으로 만든 노트 차트와 판정선 동기화
+- BPM 기준 노트 차트와 판정선 동기화
 - 물방울 모양 일반 노트와 홀드 노트 지원
 - `Normal`, `Hard` 난이도 선택
 - `시각 보정`, `판정 보정` 옵션 화면
-- 시작 화면, 곡 선택 화면, 결과 화면 제공
-- `PERFECT`, `GREAT`, `GOOD`, `BAD`, `MISS` 판정 제공
+- `PERFECT`, `GREAT`, `GOOD`, `BAD`, `MISS` 판정
 - 점수, 콤보, 최대 콤보, 정확도 표시
 
-## uv로 실행 환경 만들기
+## 실행 환경 만들기
 
 ```bash
 uv sync
@@ -41,8 +41,7 @@ uv run main.py
 
 ## 판정 기준
 
-- 판정선은 하늘과 바닥의 경계선입니다.
-- 물방울 노트가 그 경계선에 얼마나 정확히 닿는지에 따라 `PERFECT`, `GREAT`, `GOOD`, `BAD`, `MISS`가 결정됩니다.
+판정선은 하늘과 바닥의 경계선입니다. 물방울 노트가 그 경계선에 얼마나 정확히 닿는지에 따라 `PERFECT`, `GREAT`, `GOOD`, `BAD`, `MISS`가 결정됩니다.
 
 ## 타이밍 옵션
 
@@ -51,12 +50,8 @@ uv run main.py
 
 ## 곡 구성
 
-- `Pulse Drive`
-  - BPM 128
-  - 비교적 정직한 4비트 중심 패턴
-- `Neon Step`
-  - BPM 140
-  - 더 빠르고 엇박이 섞인 패턴
+- `Pulse Drive`: BPM 128, 정직한 4비트 중심 패턴
+- `Neon Step`: BPM 140, 더 빠르고 엇박이 섞인 패턴
 
 실제 오디오 파일은 `assets` 폴더에 들어 있습니다.
 
@@ -66,10 +61,12 @@ uv run main.py
 - `game_app.py`: 게임 로직 전체
 - `assets/pulse_drive.wav`: 데모 곡 1
 - `assets/neon_step.wav`: 데모 곡 2
+- `assets/metronome_click.wav`: 보정용 메트로놈 클릭 사운드
+- `assets/readme-gameplay.png`: README 플레이 화면 스크린샷
 
 ## 다음 확장 아이디어
 
-- 외부 mp3/ogg 파일을 읽어 자동으로 곡 목록에 추가
+- 외부 `mp3` 또는 `ogg` 파일을 읽어 자동으로 곡 목록에 추가
 - 판정 이펙트, 파티클, 노트 스킨 추가
 - 최고 점수 저장과 랭킹 시스템 추가
 - 키 설정 변경 기능 추가
